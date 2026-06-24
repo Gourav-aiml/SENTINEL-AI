@@ -1,0 +1,6 @@
+{
+  "name": "SENTINEL",
+  "description": "An advanced cybernetically themed AI task manager and mission briefing control center powered by Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,724 @@
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { 
+  Terminal, 
+  ShieldAlert, 
+  Trash2, 
+  Plus, 
+  Calendar, 
+  Flame, 
+  Activity, 
+  Sparkles, 
+  Clock, 
+  Play, 
+  Check, 
+  X, 
+  Send, 
+  AlertTriangle, 
+  Cpu, 
+  Layers, 
+  RefreshCw,
+  Heart
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { Task, ChatMessage } from "./types";
+
+// Default seed objectives
+const DEFAULT_TASKS: Task[] = [
+  {
+    id: "task-1",
+    name: "Review SENTINEL security protocol overrides",
+    deadline: "2026-06-23", // Today in the simulation metadata
+    priority: "High",
+    estimatedHours: 3,
+    completed: false,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: "task-2",
+    name: "Perform mainframe cybernetic database synchronization",
+    deadline: "2026-06-25",
+    priority: "Medium",
+    estimatedHours: 6,
+    completed: true,
+    createdAt: new Date().toISOString()
+  },
+  {
+    id: "task-3",
+    name: "Map external vector intrusion vectors and threat levels",
+    deadline: "2026-06-29",
+    priority: "Low",
+    estimatedHours: 2,
+    completed: false,
+    createdAt: new Date().toISOString()
+  }
+];
+
+export default function App() {
+  // Persistence state
+  const [tasks, setTasks] = useState<Task[]>(() => {
+    const saved = localStorage.getItem("sentinel_tasks");
+    return saved ? JSON.parse(saved) : DEFAULT_TASKS;
+  });
+
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    const saved = localStorage.getItem("sentinel_messages");
+    if (saved) return JSON.parse(saved);
+    return [
+      {
+        id: "msg-welcome",
+        role: "model",
+        text: "[SENTINEL COMMAND GATEWAY ACTIVE]\n\nGreetings, Operator. I have mapped your current mission vectors. State your operational query or select a rapid tactical query below.",
+        timestamp: new Date().toISOString()
+      }
+    ];
+  });
+
+  // Task form inputs
+  const [taskName, setTaskName] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [priority, setPriority] = useState<"High" | "Medium" | "Low">("Medium");
+  const [estimatedHours, setEstimatedHours] = useState<number | "">("");
+
+  // Chat inputs
+  const [userInput, setUserInput] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  // Time metrics inside simulation
+  const [systemTime, setSystemTime] = useState("");
+
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Keep LocalStorage in sync
+  useEffect(() => {
+    localStorage.setItem("sentinel_tasks", JSON.stringify(tasks));
+  }, [tasks]);
+
+  useEffect(() => {
+    localStorage.setItem("sentinel_messages", JSON.stringify(chatMessages));
+  }, [chatMessages]);
+
+  // Command-center ticking clock
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      // Emulate standard military timestamp format
+      const formatted = now.toISOString().replace("T", " ").substring(0, 19) + " UTC";
+      setSystemTime(formatted);
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Soft auto-scroll for AI chat logs
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, isAiLoading]);
+
+  // Compute stats metrics
+  const stats = useMemo(() => {
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.completed).length;
+    const pending = total - completed;
+    const highPriorityCount = tasks.filter(t => t.priority === "High" && !t.completed).length;
+    const totalHours = tasks.reduce((acc, t) => acc + (t.completed ? 0 : t.estimatedHours), 0);
+    return { total, completed, pending, highPriorityCount, totalHours };
+  }, [tasks]);
+
+  // Task creators
+  const handleAddTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!taskName.trim()) return;
+
+    const newTask: Task = {
+      id: "mission-" + Math.random().toString(36).substring(2, 9),
+      name: taskName.trim(),
+      deadline: deadline || new Date().toISOString().split("T")[0],
+      priority,
+      estimatedHours: estimatedHours === "" ? 2 : Number(estimatedHours),
+      completed: false,
+      createdAt: new Date().toISOString()
+    };
+
+    setTasks(prev => [newTask, ...prev]);
+
+    // Reset Form
+    setTaskName("");
+    setDeadline("");
+    setPriority("Medium");
+    setEstimatedHours("");
+  };
+
+  const handleToggleCompleted = (id: string) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  };
+
+  const handleDeleteTask = (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Clear Completed Missions
+  const handleClearCompleted = () => {
+    setTasks(prev => prev.filter(t => !t.completed));
+  };
+
+  // Submit trigger for AI Advisor terminal
+  const querySentinelAI = async (messageText: string) => {
+    if (!messageText.trim() || isAiLoading) return;
+
+    // Construct logs to log UI
+    const newUserMsg: ChatMessage = {
+      id: "msg-" + Date.now(),
+      role: "user",
+      text: messageText,
+      timestamp: new Date().toISOString()
+    };
+
+    // Update UI state
+    setChatMessages(prev => [...prev, newUserMsg]);
+    setUserInput("");
+    setIsAiLoading(true);
+    setApiError(null);
+
+    // Payload extraction omitting IDs & raw timestamps for neat context transfers
+    const structuredLogs = chatMessages.map(msg => ({
+      role: msg.role,
+      text: msg.text
+    }));
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: messageText,
+          tasks,
+          history: structuredLogs
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Gateway response warning: Status ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      const aiReply: ChatMessage = {
+        id: "msg-" + Date.now() + "-ai",
+        role: "model",
+        text: data.text,
+        timestamp: new Date().toISOString()
+      };
+
+      setChatMessages(prev => [...prev, aiReply]);
+    } catch (err: any) {
+      console.error("Advisory connection failure:", err);
+      setApiError(err.message || "Primary tactical link collapsed. Check secret logs.");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // Immediate diagnostic prompt macros
+  const triggerPresetDiagnostic = (type: string) => {
+    let query = "";
+    switch (type) {
+      case "assessment":
+        query = "Generate a primary security threat assessment. Focus on the pending critical High priority objectives and advise on optimal delegation order based on estimated durations.";
+        break;
+      case "efficiency":
+        query = "Recommend a workload reduction protocol. I have a lot of operational hours accumulated. How do I optimally optimize cycle expenditures?";
+        break;
+      case "threat_overdue":
+        query = "List objectives that have terminal dates (deadlines) coming up immediately, and outline security steps to secure them.";
+        break;
+      default:
+        query = "Brief me on the status of my operational mission register.";
+    }
+    querySentinelAI(query);
+  };
+
+  // Helper calculation to check if a deadline is overdue
+  const getDeadlineStatusText = (dateStr: string, completed: boolean) => {
+    if (completed) return { text: "Objective Secured", color: "text-emerald-400" };
+    if (!dateStr) return { text: "No Terminal deadline", color: "text-neutral-500" };
+    
+    // Constant simulation date constraint: June 23, 2026
+    const simToday = new Date("2026-06-23T00:00:00");
+    const targetDate = new Date(dateStr + "T00:00:00");
+
+    const diffTime = targetDate.getTime() - simToday.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return { text: `OVERDUE BY ${Math.abs(diffDays)} DAYS`, color: "text-red-500 font-bold animate-pulse" };
+    } else if (diffDays === 0) {
+      return { text: "TERMINATION DATE TODAY", color: "text-orange-500 font-semibold" };
+    } else if (diffDays === 1) {
+      return { text: "DUE TOMORROW", color: "text-amber-500" };
+    } else {
+      return { text: `${diffDays} days remaining`, color: "text-neutral-400" };
+    }
+  };
+
+  return (
+    <div id="sentinel-control-panel" className="min-h-screen bg-[#080808] text-gray-200 font-sans selection:bg-red-900 selection:text-red-100 p-4 lg:p-6 transition-all relative overflow-x-hidden">
+      
+      {/* Visual cybernetic lattice grid background element */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-40 pointer-events-none" />
+
+      {/* Main Terminal Frame */}
+      <div className="max-w-7xl mx-auto relative z-10 flex flex-col gap-6">
+        
+        {/* TOP STATUS NAVIGATION BAR */}
+        <header id="sentinel-header" className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-[#0C0C0C] rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.8)]">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-red-600 rounded flex items-center justify-center shadow-md animate-pulse">
+              <div className="w-4 h-4 bg-black rounded-sm rotate-45"></div>
+            </div>
+            <h1 className="text-xl font-black tracking-tighter text-white">
+              SENTINEL 
+              <span className="text-red-500 font-medium ml-2 text-sm tracking-widest opacity-85 uppercase">
+                Mission Control
+              </span>
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-4 lg:gap-6 text-xs uppercase tracking-widest font-semibold font-mono">
+            <span className="text-orange-500 hidden sm:inline">System: Active</span>
+            <span className="opacity-40 hidden sm:inline">v1.0.4-Delta</span>
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-900 to-orange-850 border border-white/20 shadow-inner flex items-center justify-center">
+              <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping" />
+            </div>
+          </div>
+        </header>
+
+        {/* METRICS HUD ROW */}
+        <section id="sentinel-stats-panel" className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-[#0A0A0A] border border-white/10 rounded-lg p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/20 transition-all duration-350">
+            <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition text-white">
+              <Layers className="w-12 h-12" />
+            </div>
+            <span className="text-[10px] font-mono text-gray-500 font-semibold tracking-widest uppercase">Active Vectors</span>
+            <span className="text-3xl font-mono font-bold text-white mt-1.5 flex items-baseline gap-1.5">
+              {stats.pending}
+              <span className="text-xs text-gray-500"> / {stats.total} total</span>
+            </span>
+          </div>
+
+          <div className="bg-[#0A0A0A] border border-white/10 rounded-lg p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/20 transition-all duration-350">
+            <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-15 transition text-red-500">
+              <Flame className="w-12 h-12" />
+            </div>
+            <span className="text-[10px] font-mono text-red-400 font-semibold tracking-widest uppercase">Critical Threats</span>
+            <span className="text-3xl font-mono font-bold text-red-500 mt-1.5 flex items-baseline gap-1.5">
+              {stats.highPriorityCount}
+              {stats.highPriorityCount > 0 && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-red-950 font-bold uppercase text-red-400 border border-red-905 animate-pulse">ALARM</span>
+              )}
+            </span>
+          </div>
+
+          <div className="bg-[#0A0A0A] border border-white/10 rounded-lg p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/20 transition-all duration-350">
+            <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition text-orange-500">
+              <Clock className="w-12 h-12" />
+            </div>
+            <span className="text-[10px] font-mono text-orange-400 font-semibold tracking-widest uppercase">Cycle Expenditures</span>
+            <span className="text-3xl font-mono font-bold text-orange-500 mt-1.5">
+              {stats.totalHours} <span className="text-xs text-gray-500 font-normal">Hrs Est.</span>
+            </span>
+          </div>
+
+          <div className="bg-[#0A0A0A] border border-white/10 rounded-lg p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/20 transition-all duration-350">
+            <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-15 transition text-emerald-500">
+              <Activity className="w-12 h-12" />
+            </div>
+            <span className="text-[10px] font-mono text-emerald-400 font-semibold tracking-widest uppercase">Objective Clearance</span>
+            <span className="text-3xl font-mono font-bold text-emerald-400 mt-1.5">
+              {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
+              <span className="text-xs text-gray-500 font-normal block mt-0.5">Resolved</span>
+            </span>
+          </div>
+        </section>
+
+        {/* PRIMARY CONTROL GRID */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          
+          {/* COLUMN 1: SIDEBAR: TASK CREATION (span 4) */}
+          <div className="lg:col-span-4 flex flex-col gap-6">
+            <section id="mission-entry-box" className="border border-white/10 bg-[#0A0A0A] p-6 rounded-lg flex flex-col gap-5 shadow-lg relative">
+              <div className="border-b border-white/15 pb-2">
+                <h2 className="text-xs font-bold text-white uppercase tracking-[0.2em]">Initialize Task</h2>
+                <p className="text-[10px] text-gray-500 mt-1 uppercase font-mono">Input mission parameters to deploy</p>
+              </div>
+
+              <form onSubmit={handleAddTask} className="flex flex-col gap-4">
+                
+                {/* Mission Name input */}
+                <div>
+                  <label htmlFor="mission-name" className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 font-bold">
+                    Task Designation
+                  </label>
+                  <input
+                    id="mission-name"
+                    type="text"
+                    required
+                    placeholder="e.g. Core Engine Audit"
+                    value={taskName}
+                    onChange={(e) => setTaskName(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-500/50 transition duration-150"
+                  />
+                </div>
+
+                {/* Sub row - Hours budget and Deadline picker */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="mission-deadline" className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 font-bold">
+                      Deadline
+                    </label>
+                    <input
+                      id="mission-deadline"
+                      type="date"
+                      value={deadline}
+                      onChange={(e) => setDeadline(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500/50 transition duration-150"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="mission-hours" className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 font-bold">
+                      EST. Hours
+                    </label>
+                    <input
+                      id="mission-hours"
+                      type="number"
+                      min="1"
+                      max="100"
+                      placeholder="e.g. 2.5"
+                      value={estimatedHours}
+                      onChange={(e) => setEstimatedHours(e.target.value ? Number(e.target.value) : "")}
+                      className="w-full bg-white/5 border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500/50 transition duration-150"
+                    />
+                  </div>
+                </div>
+
+                {/* Threat Priority select buttons (glow themed) */}
+                <div>
+                  <label className="block text-[10px] text-gray-500 uppercase tracking-wider mb-1.5 font-bold">
+                    Priority Level
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      id="priority-high-btn"
+                      onClick={() => setPriority("High")}
+                      className={`flex-1 py-1.5 px-2 border text-[10px] font-bold rounded uppercase transition duration-150 cursor-pointer ${
+                        priority === "High"
+                          ? "border-red-500/50 bg-red-500/10 text-red-500"
+                          : "border-white/10 bg-white/5 text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      High
+                    </button>
+
+                    <button
+                      type="button"
+                      id="priority-med-btn"
+                      onClick={() => setPriority("Medium")}
+                      className={`flex-1 py-1.5 px-2 border text-[10px] font-bold rounded uppercase transition duration-150 cursor-pointer ${
+                        priority === "Medium"
+                          ? "border-orange-500/50 bg-orange-500/10 text-orange-500"
+                          : "border-white/10 bg-white/5 text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      Med
+                    </button>
+
+                    <button
+                      type="button"
+                      id="priority-low-btn"
+                      onClick={() => setPriority("Low")}
+                      className={`flex-1 py-1.5 px-2 border text-[10px] font-bold rounded uppercase transition duration-150 cursor-pointer ${
+                        priority === "Low"
+                          ? "border-amber-600/50 bg-amber-600/10 text-amber-500"
+                          : "border-white/10 bg-white/5 text-gray-500 hover:text-gray-300"
+                      }`}
+                    >
+                      Low
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  id="add-mission-submit"
+                  className="w-full bg-orange-600 hover:bg-orange-500 text-black font-black uppercase text-xs py-3 rounded mt-4 transition duration-200 cursor-pointer shadow-[0_4px_12px_rgba(234,88,12,0.2)]"
+                >
+                  Deploy Task
+                </button>
+              </form>
+            </section>
+
+            {/* QUICK DIAGNOSTICS */}
+            <section id="ai-quick-query-box" className="border border-white/5 bg-[#0A0A0A]/70 p-5 rounded-lg flex flex-col gap-4 shadow-sm">
+              <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em] flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-orange-500" />
+                <span>Diagnostics Gateway</span>
+              </h3>
+              
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() => triggerPresetDiagnostic("assessment")}
+                  className="w-full text-left font-mono text-xs px-3.5 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between text-gray-300 transition duration-150"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                    <span>Priority Assessment</span>
+                  </span>
+                  <span className="text-[9px] bg-red-950/40 text-red-400 border border-red-900/50 px-1.5 py-0.5 rounded font-black tracking-wider uppercase">Analyze</span>
+                </button>
+
+                <button
+                  onClick={() => triggerPresetDiagnostic("efficiency")}
+                  className="w-full text-left font-mono text-xs px-3.5 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded flex items-center justify-between text-gray-300 transition duration-150"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                    <span>Workload Reduction</span>
+                  </span>
+                  <span className="text-[9px] bg-orange-950/40 text-orange-400 border border-orange-900/50 px-1.5 py-0.5 rounded font-black tracking-wider uppercase">Analyze</span>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          {/* COLUMN 2: ACTIVE REGISTER & SECURE INTELLIGENCE (span 8) */}
+          <div className="lg:col-span-8 flex flex-col gap-6">
+
+            {/* UP: MISSION REGISTER LIST (Active Directives) */}
+            <section id="mission-register-box" className="border border-white/10 bg-[#0A0A0A] p-6 rounded-lg flex flex-col gap-5 shadow-lg flex-1">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold uppercase tracking-[0.3em] text-white">Active Directives</h3>
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] text-orange-500 font-bold uppercase tracking-wider">{stats.pending} TASKS PENDING</span>
+                  {tasks.some(t => t.completed) && (
+                    <button
+                      onClick={handleClearCompleted}
+                      className="text-[9px] font-mono border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white px-2 py-1 rounded transition duration-150 cursor-pointer uppercase font-bold"
+                    >
+                      Clear Resolved
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Operational scrollable list */}
+              <div className="flex flex-col gap-3 overflow-y-auto max-h-[380px] pr-1.5 custom-scrollbar">
+                <AnimatePresence initial={false}>
+                  {tasks.length === 0 ? (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="p-12 text-center text-gray-500 font-mono text-xs border border-dashed border-white/10 rounded-lg bg-white/2"
+                    >
+                      <AlertTriangle className="w-8 h-8 text-orange-500/70 mx-auto mb-3" />
+                      ALL INTRUSIONS NEUTRALIZED.
+                      <p className="text-[10px] text-gray-600 mt-1 uppercase tracking-wider">Operational mission deck is empty.</p>
+                    </motion.div>
+                  ) : (
+                    tasks.map((task) => {
+                      const priorityTag = 
+                        task.priority === "High" 
+                          ? { text: "Priority Alpha", border: "border-red-650", badge: "bg-red-500/10 text-red-500 border-red-500/30" } 
+                          : task.priority === "Medium"
+                          ? { text: "Priority Beta", border: "border-orange-500", badge: "bg-orange-500/10 text-orange-500 border-orange-500/30" }
+                          : { text: "Priority Gamma", border: "border-gray-600", badge: "bg-white/5 text-gray-400 border-white/10" };
+                          
+                      const deadlineText = getDeadlineStatusText(task.deadline, task.completed);
+
+                      return (
+                        <motion.div
+                          key={task.id}
+                          layout
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: -30 }}
+                          className={`flex items-center justify-between p-4 bg-white/5 border-l-4 rounded-r transition-all ${priorityTag.border} ${
+                            task.completed ? "opacity-45" : "hover:bg-white/8 cursor-default"
+                          }`}
+                        >
+                          <div className="flex flex-col gap-1 min-w-0 pr-4">
+                            <span className={`text-sm font-bold text-white uppercase tracking-tight break-words max-w-sm sm:max-w-md ${
+                              task.completed ? "line-through text-gray-500" : ""
+                            }`}>
+                              {task.name}
+                            </span>
+                            <span className="text-[10px] text-gray-500 uppercase font-mono tracking-wider">
+                              DEADLINE: {task.deadline || "NONE"} • {task.estimatedHours} HRS EST. • <span className={deadlineText.color}>{deadlineText.text}</span>
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-4 flex-shrink-0">
+                            <span className={`px-2 py-1 text-[9px] font-bold border uppercase tracking-wider rounded ${priorityTag.badge}`}>
+                              {priorityTag.text}
+                            </span>
+
+                            <div className="flex items-center gap-1.5">
+                              {/* Toggle Checkbox */}
+                              <button
+                                onClick={() => handleToggleCompleted(task.id)}
+                                className={`p-1.5 rounded text-xs transition cursor-pointer ${
+                                  task.completed
+                                    ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                    : "bg-white/5 text-gray-400 hover:text-white"
+                                }`}
+                                title={task.completed ? "Re-open" : "Complete"}
+                              >
+                                {task.completed ? <Check className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                              </button>
+
+                              {/* Delete task */}
+                              <button
+                                onClick={() => handleDeleteTask(task.id)}
+                                className="p-1.5 rounded bg-white/5 text-gray-500 hover:text-red-500 hover:bg-red-950/20 transition cursor-pointer"
+                                title="Delete task"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })
+                  )}
+                </AnimatePresence>
+              </div>
+            </section>
+
+            {/* DOWN: SECURE INTELLIGENCE CHANNEL (Chat Box Area) */}
+            <section id="ai-advisor-box" className="border-t border-white/10 bg-[#060606] p-6 flex flex-col justify-between rounded-lg h-96 shadow-lg relative">
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-orange-600 rounded-full flex items-center justify-center text-xs font-bold text-black font-mono">G</div>
+                  <h4 className="text-xs font-bold uppercase tracking-[0.25em] text-white">Gemini Intelligence</h4>
+                </div>
+                <span className="text-[10px] text-gray-500 tracking-widest font-mono">SECURE TACTICAL COMMUNICATIONS</span>
+              </div>
+
+              {/* Chat Messages */}
+              <div id="ai-chat-logs" className="flex-1 overflow-y-auto my-3 space-y-4 pr-1.5 custom-scrollbar min-h-0">
+                {chatMessages.map((msg) => {
+                  const isUser = msg.role === "user";
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex gap-3 max-w-[85%] ${isUser ? "ml-auto justify-end" : "justify-start"}`}
+                    >
+                      {!isUser && (
+                        <div className="w-7 h-7 bg-orange-600/80 rounded-full shrink-0 flex items-center justify-center text-[10px] font-black text-black">
+                          S
+                        </div>
+                      )}
+
+                      <div className={`p-3.5 rounded-lg border text-xs leading-relaxed ${
+                        isUser 
+                          ? "bg-red-500/10 border-red-500/20 text-red-200 rounded-tr-none" 
+                          : "bg-white/5 border-white/5 text-gray-300 rounded-tl-none"
+                      }`}>
+                        {isUser ? (
+                          <div className="whitespace-pre-wrap break-words">{msg.text}</div>
+                        ) : (
+                          <div>
+                            <span className="text-orange-500 font-bold uppercase text-[9px] block mb-1">SENTINEL AI PROTOCOL</span>
+                            <div className="whitespace-pre-wrap break-words">{msg.text}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {isUser && (
+                        <div className="w-7 h-7 bg-red-950/50 border border-red-900/40 rounded-full shrink-0 flex items-center justify-center text-[10px] font-mono text-red-400">
+                          OP
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Loading feedback */}
+                {isAiLoading && (
+                  <div className="flex gap-3 justify-start max-w-[85%]">
+                    <div className="w-7 h-7 bg-orange-600/80 rounded-full shrink-0 flex items-center justify-center text-[10px] font-black text-black animate-spin">
+                      S
+                    </div>
+                    <div className="bg-white/3 border border-white/5 p-3.5 rounded-lg rounded-tl-none text-xs text-gray-400 font-mono flex items-center gap-3">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-orange-500" />
+                      <span>Synthesizing intelligence telemetry report...</span>
+                    </div>
+                  </div>
+                )}
+
+                {apiError && (
+                  <div className="p-3.5 rounded bg-red-950/20 border border-red-900/30 text-red-300 font-mono text-xs flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />
+                    <div>
+                      <strong className="text-red-400 block uppercase text-[10px] mb-1">Transmission link severed</strong>
+                      <span>{apiError}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Chat Input Controls */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (userInput.trim() && !isAiLoading) {
+                    querySentinelAI(userInput);
+                  }
+                }}
+                className="relative mt-2"
+              >
+                <input
+                  type="text"
+                  placeholder="Transmit message to Gemini..."
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 focus:border-red-500/50 rounded-full px-6 py-3.5 text-xs text-white placeholder-gray-600 focus:outline-none transition duration-150"
+                />
+                <button
+                  type="submit"
+                  disabled={isAiLoading || !userInput.trim()}
+                  className="absolute right-2 top-2 h-8 px-4 bg-red-600 hover:bg-red-500 text-white disabled:opacity-40 rounded-full text-[10px] font-bold uppercase transition duration-150 cursor-pointer flex items-center justify-center"
+                >
+                  Send
+                </button>
+              </form>
+            </section>
+          </div>
+        </div>
+
+        {/* SECURE NETWORK FOOTER */}
+        <footer id="sentinel-footer" className="h-10 border-t border-white/5 px-4 flex items-center justify-between text-[9px] text-gray-650 font-mono mt-3">
+          <div className="flex gap-4">
+            <span>IP: 192.168.1.104</span>
+            <span>LATENCY: 14MS</span>
+            <span className="text-green-900 tracking-wider">ENCRYPTED CONNECTION</span>
+          </div>
+          <div className="flex gap-4 uppercase font-semibold">
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-red-600 rounded-full animate-ping"></span> 
+              Urgent Risks: {stats.highPriorityCount}
+            </span>
+            <span>Load: 14%</span>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}
