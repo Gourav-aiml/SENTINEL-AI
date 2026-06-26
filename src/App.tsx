@@ -25,6 +25,15 @@ import { Task, ChatMessage } from "./types";
 // Default seed objectives
 const DEFAULT_TASKS: Task[] = [
   {
+    id: "task-overdue-1",
+    name: "Calibrate secondary defense network containment grid",
+    deadline: "2026-06-20", // Overdue relative to June 23, 2026!
+    priority: "Medium",
+    estimatedHours: 4,
+    completed: false,
+    createdAt: new Date().toISOString()
+  },
+  {
     id: "task-1",
     name: "Review SENTINEL security protocol overrides",
     deadline: "2026-06-23", // Today in the simulation metadata
@@ -52,6 +61,75 @@ const DEFAULT_TASKS: Task[] = [
     createdAt: new Date().toISOString()
   }
 ];
+
+export const calculateDefcon = (deadlineStr: string | undefined, priority?: string): 1 | 2 | 3 | 4 | 5 => {
+  if (!deadlineStr) {
+    if (priority === "High") return 1;
+    if (priority === "Medium") return 3;
+    return 5;
+  }
+  const simToday = new Date("2026-06-23T00:00:00");
+  const targetDate = new Date(deadlineStr + "T00:00:00");
+  const diffTime = targetDate.getTime() - simToday.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays <= 0) return 1; // overdue or due today
+  if (diffDays === 1) return 2; // due tomorrow
+  if (diffDays <= 3) return 3; // due in 2-3 days
+  if (diffDays <= 7) return 4; // due in 4-7 days
+  return 5; // 7+ days
+};
+
+const DECOMPOSE_TEMPLATES: Record<string, { name: string; hours: number }[]> = {
+  calibrate: [
+    { name: "Execute containment field thermal diagnostic sweep", hours: 1 },
+    { name: "Align frequency harmonics phase arrays", hours: 1.5 },
+    { name: "Synchronize grid core containment lattice", hours: 1 },
+    { name: "Validate mainframe status diagnostic logs", hours: 0.5 }
+  ],
+  security: [
+    { name: "Analyze SENTINEL firewall override registry", hours: 1 },
+    { name: "Patch zero-day cybernetic port vulnerabilities", hours: 2 },
+    { name: "Verify biometric authentication security tokens", hours: 1 }
+  ],
+  audit: [
+    { name: "Extract data flow transaction access logs", hours: 1.5 },
+    { name: "Inspect anomalous memory heap allocations", hours: 2 },
+    { name: "Compile master sector vulnerability report", hours: 1 }
+  ],
+  clean: [
+    { name: "Purge corrupt database cache layers", hours: 0.5 },
+    { name: "Optimize storage b-tree lookup indexes", hours: 1 },
+    { name: "Archive historic mission transaction logs", hours: 1 }
+  ]
+};
+
+const getSubtasksForTaskName = (taskName: string, estimatedHours: number) => {
+  const lowerName = taskName.toLowerCase();
+  let template = null;
+  
+  for (const key of Object.keys(DECOMPOSE_TEMPLATES)) {
+    if (lowerName.includes(key)) {
+      template = DECOMPOSE_TEMPLATES[key];
+      break;
+    }
+  }
+  
+  if (!template) {
+    template = [
+      { name: `Map vector dependencies for "${taskName}"`, hours: Math.max(0.5, Number((estimatedHours * 0.3).toFixed(1))) },
+      { name: "Execute core operational routines", hours: Math.max(1, Number((estimatedHours * 0.5).toFixed(1))) },
+      { name: "Verify output telemetry parameters", hours: Math.max(0.5, Number((estimatedHours * 0.2).toFixed(1))) }
+    ];
+  }
+  
+  return template.map((st, index) => ({
+    id: `subtask-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 5)}`,
+    name: st.name,
+    estimatedHours: st.hours,
+    completed: false
+  }));
+};
 
 export default function App() {
   // Persistence state
@@ -242,6 +320,179 @@ export default function App() {
     querySentinelAI(query);
   };
 
+  // WAR ROOM DETECTOR
+  const isWarRoomActive = useMemo(() => {
+    return tasks.some(t => {
+      if (t.completed) return false;
+      const defcon = calculateDefcon(t.deadline, t.priority);
+      return defcon <= 2; // DEFCON 1 or DEFCON 2
+    });
+  }, [tasks]);
+
+  const criticalDueTask = useMemo(() => {
+    if (!isWarRoomActive) return null;
+    const activeWithDeadline = tasks.filter(t => !t.completed && t.deadline);
+    return [...activeWithDeadline].sort((a, b) => {
+      return new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime();
+    })[0] || null;
+  }, [tasks, isWarRoomActive]);
+
+  // COGNITIVE LOAD GAUGE METRICS
+  const cognitiveLoad = useMemo(() => {
+    const pending = tasks.filter(t => !t.completed);
+    if (pending.length === 0) return 0;
+    const totalHours = pending.reduce((sum, t) => sum + (t.estimatedHours || 0), 0);
+    const criticalCount = pending.filter(t => {
+      const defcon = calculateDefcon(t.deadline, t.priority);
+      return defcon <= 2;
+    }).length;
+    
+    // 8 hours of totalHours counts as 50% capacity, and each critical task counts as 15% load
+    const baseLoad = (totalHours / 8) * 50;
+    const criticalLoad = criticalCount * 15;
+    return Math.min(100, Math.round(baseLoad + criticalLoad));
+  }, [tasks]);
+
+  // TASK DECOMPOSITION ENGINE
+  const handleDecomposeTask = (id: string) => {
+    setTasks(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      if (t.subtasks && t.subtasks.length > 0) return t;
+      const subtasks = getSubtasksForTaskName(t.name, t.estimatedHours);
+      return {
+        ...t,
+        subtasks
+      };
+    }));
+  };
+
+  const handleToggleSubtask = (taskId: string, subtaskId: string) => {
+    setTasks(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      if (!t.subtasks) return t;
+      
+      const updatedSubtasks = t.subtasks.map(st => 
+        st.id === subtaskId ? { ...st, completed: !st.completed } : st
+      );
+      
+      // If all subtasks completed, mark the parent task completed
+      const allCompleted = updatedSubtasks.every(st => st.completed);
+      return {
+        ...t,
+        subtasks: updatedSubtasks,
+        completed: allCompleted ? true : t.completed
+      };
+    }));
+  };
+
+  // BATTLE PLAN GENERATOR
+  const [battlePlan, setBattlePlan] = useState<{ time: string; name: string; priorityLabel: string }[] | null>(null);
+
+  const handleGenerateBattlePlan = () => {
+    const pending = tasks.filter(t => !t.completed);
+    if (pending.length === 0) {
+      setBattlePlan([]);
+      return;
+    }
+
+    // Sort: High -> Medium -> Low, then by deadline
+    const sorted = [...pending].sort((a, b) => {
+      const pA = a.priority === "High" ? 3 : a.priority === "Medium" ? 2 : 1;
+      const pB = b.priority === "High" ? 3 : b.priority === "Medium" ? 2 : 1;
+      if (pB !== pA) return pB - pA;
+      
+      if (a.deadline && b.deadline) {
+        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
+      }
+      if (a.deadline) return -1;
+      if (b.deadline) return 1;
+      return 0;
+    });
+
+    let currentHour = 9;
+    let currentMinute = 0;
+
+    const plan = sorted.map(t => {
+      const hrs = t.estimatedHours || 1;
+      
+      // Start slot formatting
+      const startStr = `${String(currentHour).padStart(2, "0")}:${String(currentMinute).padStart(2, "0")}`;
+      
+      // End slot calculating
+      let endHour = currentHour + Math.floor(hrs);
+      let endMinute = currentMinute + Math.round((hrs % 1) * 60);
+      if (endMinute >= 60) {
+        endHour += 1;
+        endMinute -= 60;
+      }
+      
+      const endStr = `${String(endHour).padStart(2, "0")}:${String(endMinute).padStart(2, "0")}`;
+      
+      // Update pointer
+      currentHour = endHour;
+      currentMinute = endMinute;
+      
+      const priorityLabel = t.priority === "High" ? "PRIORITY ALPHA" : t.priority === "Medium" ? "PRIORITY BETA" : "PRIORITY GAMMA";
+      
+      return {
+        time: `${startStr} - ${endStr}`,
+        name: t.name,
+        priorityLabel
+      };
+    });
+
+    setBattlePlan(plan);
+  };
+
+  // PROCRASTINATION RESCUE
+  const handleRescueMission = () => {
+    const simToday = new Date("2026-06-23T00:00:00");
+    let rescueCount = 0;
+
+    const updatedTasks = tasks.map(t => {
+      if (t.completed || !t.deadline) return t;
+      const targetDate = new Date(t.deadline + "T00:00:00");
+      if (targetDate.getTime() < simToday.getTime()) {
+        rescueCount++;
+        return {
+          ...t,
+          priority: "High" as const,
+          deadline: "2026-06-23" // Set deadline to today (June 23, 2026)
+        };
+      }
+      return t;
+    });
+
+    if (rescueCount > 0) {
+      setTasks(updatedTasks);
+
+      const rescueMsg: ChatMessage = {
+        id: "msg-rescue-" + Date.now(),
+        role: "model",
+        text: `[🚨 SENTINEL PROCRASTINATION RESCUE PROTOCOL INITIATED]
+Mainframe scan located **${rescueCount} overdue mission vectors** violating current timeline parameters.
+
+**RESCUE MUTATIONS EXECUTED:**
+- **Elevated Status:** ${rescueCount} objectives have been promoted to **PRIORITY ALPHA (High)** threat level.
+- **Timeline Recalibration:** Target windows synchronized to current core cycle (**2026-06-23**).
+- **Execution Mandate:** Divert all operator memory blocks to immediately neutralize **"${updatedTasks.find(t => t.priority === "High" && !t.completed)?.name}"**. Do not falter.`,
+        timestamp: new Date().toISOString()
+      };
+
+      setChatMessages(prev => [...prev, rescueMsg]);
+    } else {
+      const secureMsg: ChatMessage = {
+        id: "msg-rescue-fail-" + Date.now(),
+        role: "model",
+        text: `[🛡️ INTEL SCAN: COMPLETED SECURE]
+No overdue mission vectors detected in the mainframe logs. System timeline integrity is operating within safe, optimal parameters. Rescue actions are not required at this cycle.`,
+        timestamp: new Date().toISOString()
+      };
+
+      setChatMessages(prev => [...prev, secureMsg]);
+    }
+  };
+
   // Helper calculation to check if a deadline is overdue
   const getDeadlineStatusText = (dateStr: string, completed: boolean) => {
     if (completed) return { text: "Objective Secured", color: "text-emerald-400" };
@@ -274,10 +525,32 @@ export default function App() {
       {/* Main Terminal Frame */}
       <div className="max-w-7xl mx-auto relative z-10 flex flex-col gap-6">
         
+        {/* CRITICAL ALERT BANNER */}
+        {isWarRoomActive && criticalDueTask && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-red-950/80 border border-red-500/40 text-red-100 text-xs px-5 py-3 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-3 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.25)] font-mono"
+          >
+            <div className="flex items-center gap-2.5">
+              <ShieldAlert className="w-5 h-5 text-red-500 shrink-0" />
+              <span>
+                <strong className="text-red-400 font-bold uppercase tracking-wider">CRITICAL WAR ROOM ALERT:</strong> Objective <span className="text-white font-bold">"{criticalDueTask.name}"</span> is overdue or due within 24 hours. Execute immediate tactical override.
+              </span>
+            </div>
+            <button 
+              onClick={handleRescueMission} 
+              className="bg-red-600 hover:bg-red-500 text-white font-black uppercase text-[9px] px-3 py-1.5 rounded transition duration-150 shadow-md cursor-pointer shrink-0 border border-red-500/40"
+            >
+              RESCUE MISSION
+            </button>
+          </motion.div>
+        )}
+        
         {/* TOP STATUS NAVIGATION BAR */}
-        <header id="sentinel-header" className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-[#0C0C0C] rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.8)]">
+        <header id="sentinel-header" className={`h-16 border-b flex items-center justify-between px-6 bg-[#0C0C0C] rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.8)] transition duration-200 ${isWarRoomActive ? "border-red-650" : "border-white/10"}`}>
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-red-600 rounded flex items-center justify-center shadow-md animate-pulse">
+            <div className={`w-8 h-8 rounded flex items-center justify-center shadow-md animate-pulse transition duration-200 ${isWarRoomActive ? "bg-red-600" : "bg-red-600"}`}>
               <div className="w-4 h-4 bg-black rounded-sm rotate-45"></div>
             </div>
             <h1 className="text-xl font-black tracking-tighter text-white">
@@ -289,7 +562,13 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4 lg:gap-6 text-xs uppercase tracking-widest font-semibold font-mono">
-            <span className="text-orange-500 hidden sm:inline">System: Active</span>
+            {isWarRoomActive ? (
+              <span className="text-red-500 font-black animate-pulse flex items-center gap-1.5">
+                <span className="inline-block animate-bounce">⚠️</span> WAR ROOM ACTIVE
+              </span>
+            ) : (
+              <span className="text-orange-500 hidden sm:inline">System: Active</span>
+            )}
             <span className="opacity-40 hidden sm:inline">v1.0.4-Delta</span>
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-900 to-orange-850 border border-white/20 shadow-inner flex items-center justify-center">
               <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping" />
@@ -298,8 +577,19 @@ export default function App() {
         </header>
 
         {/* METRICS HUD ROW */}
-        <section id="sentinel-stats-panel" className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-[#0A0A0A] border border-white/10 rounded-lg p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/20 transition-all duration-350">
+        <section 
+          id="sentinel-stats-panel" 
+          className={`grid grid-cols-2 lg:grid-cols-5 gap-4 p-1 rounded-xl transition-all duration-300 ${
+            isWarRoomActive 
+              ? "border border-red-500/40 shadow-[0_0_20px_rgba(239,68,68,0.3)] bg-red-950/5" 
+              : "border border-transparent"
+          }`}
+        >
+          <div className={`p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group transition-all duration-350 rounded-lg ${
+            isWarRoomActive 
+              ? "bg-[#0A0707] border border-red-500/40 hover:border-red-500/65" 
+              : "bg-[#0A0A0A] border border-white/10 hover:border-white/20"
+          }`}>
             <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition text-white">
               <Layers className="w-12 h-12" />
             </div>
@@ -310,7 +600,11 @@ export default function App() {
             </span>
           </div>
 
-          <div className="bg-[#0A0A0A] border border-white/10 rounded-lg p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/20 transition-all duration-350">
+          <div className={`p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group transition-all duration-350 rounded-lg ${
+            isWarRoomActive 
+              ? "bg-[#0A0707] border border-red-500/40 hover:border-red-500/65" 
+              : "bg-[#0A0A0A] border border-white/10 hover:border-white/20"
+          }`}>
             <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-15 transition text-red-500">
               <Flame className="w-12 h-12" />
             </div>
@@ -323,7 +617,11 @@ export default function App() {
             </span>
           </div>
 
-          <div className="bg-[#0A0A0A] border border-white/10 rounded-lg p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/20 transition-all duration-350">
+          <div className={`p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group transition-all duration-350 rounded-lg ${
+            isWarRoomActive 
+              ? "bg-[#0A0707] border border-red-500/40 hover:border-red-500/65" 
+              : "bg-[#0A0A0A] border border-white/10 hover:border-white/20"
+          }`}>
             <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition text-orange-500">
               <Clock className="w-12 h-12" />
             </div>
@@ -333,7 +631,11 @@ export default function App() {
             </span>
           </div>
 
-          <div className="bg-[#0A0A0A] border border-white/10 rounded-lg p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group hover:border-white/20 transition-all duration-350">
+          <div className={`p-5 flex flex-col justify-between shadow-sm relative overflow-hidden group transition-all duration-350 rounded-lg ${
+            isWarRoomActive 
+              ? "bg-[#0A0707] border border-red-500/40 hover:border-red-500/65" 
+              : "bg-[#0A0A0A] border border-white/10 hover:border-white/20"
+          }`}>
             <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-15 transition text-emerald-500">
               <Activity className="w-12 h-12" />
             </div>
@@ -342,6 +644,55 @@ export default function App() {
               {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
               <span className="text-xs text-gray-500 font-normal block mt-0.5">Resolved</span>
             </span>
+          </div>
+
+          {/* COGNITIVE LOAD GAUGE */}
+          <div className={`p-5 flex items-center gap-4 shadow-sm relative overflow-hidden group transition-all duration-350 rounded-lg ${
+            isWarRoomActive 
+              ? "bg-[#0A0707] border border-red-500/40 hover:border-red-500/65" 
+              : "bg-[#0A0A0A] border border-white/10 hover:border-white/20"
+          }`}>
+            <div className="relative w-14 h-14 flex-shrink-0 flex items-center justify-center">
+              <svg className="w-full h-full rotate-[-90deg]">
+                <circle
+                  cx="28"
+                  cy="28"
+                  r="18"
+                  stroke="rgba(255, 255, 255, 0.05)"
+                  strokeWidth="3.5"
+                  fill="transparent"
+                />
+                <motion.circle
+                  cx="28"
+                  cy="28"
+                  r="18"
+                  stroke={cognitiveLoad <= 40 ? "#10b981" : cognitiveLoad <= 70 ? "#eab308" : "#ef4444"}
+                  strokeWidth="3.5"
+                  fill="transparent"
+                  strokeDasharray={2 * Math.PI * 18}
+                  animate={{ strokeDashoffset: (2 * Math.PI * 18) - (cognitiveLoad / 100) * (2 * Math.PI * 18) }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                />
+              </svg>
+              <span className={`absolute font-mono font-black text-xs ${
+                cognitiveLoad <= 40 ? "text-emerald-400" : cognitiveLoad <= 70 ? "text-yellow-400" : "text-red-500"
+              }`}>
+                {cognitiveLoad}%
+              </span>
+            </div>
+            
+            <div className="flex flex-col min-w-0">
+              <span className="text-[10px] font-mono text-gray-500 font-semibold tracking-widest uppercase">Cognitive Load</span>
+              <span className="text-xs font-mono font-bold mt-1 text-white truncate">
+                {cognitiveLoad > 80 ? (
+                  <span className="animate-pulse text-red-500 font-black tracking-tighter uppercase">⚠️ OVERLOAD</span>
+                ) : (
+                  <span className={cognitiveLoad <= 40 ? "text-emerald-400" : cognitiveLoad <= 70 ? "text-yellow-400" : "text-red-400"}>
+                    {cognitiveLoad <= 40 ? "OPTIMAL" : "ELEVATED"}
+                  </span>
+                )}
+              </span>
+            </div>
           </div>
         </section>
 
@@ -494,6 +845,65 @@ export default function App() {
                 </button>
               </div>
             </section>
+
+            {/* TACTICAL BATTLE PLAN & PROCRASTINATION RESCUE */}
+            <section id="sentinel-battle-plan-box" className="border border-white/10 bg-[#0A0A0A] p-5 rounded-lg flex flex-col gap-4 shadow-lg">
+              <h3 className="text-xs font-bold text-white uppercase tracking-[0.2em] flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                <span>BATTLE PLAN</span>
+              </h3>
+              
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  onClick={handleGenerateBattlePlan}
+                  id="generate-battle-plan-btn"
+                  className="bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/30 hover:border-orange-500/60 text-orange-400 font-bold uppercase text-[10px] py-2.5 px-3 rounded transition duration-150 cursor-pointer text-center font-mono flex items-center justify-center gap-1.5"
+                >
+                  Generate Battle Plan
+                </button>
+                <button
+                  onClick={handleRescueMission}
+                  id="rescue-mission-btn"
+                  className="bg-red-600/10 hover:bg-red-600/20 border border-red-500/30 hover:border-red-500/60 text-red-400 font-bold uppercase text-[10px] py-2.5 px-3 rounded transition duration-150 cursor-pointer text-center font-mono flex items-center justify-center gap-1.5"
+                >
+                  Rescue Mission
+                </button>
+              </div>
+
+              {/* BATTLE PLAN RESULTS DISPLAY */}
+              <AnimatePresence mode="wait">
+                {battlePlan !== null && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-2 p-4 bg-black/60 border border-orange-500/20 rounded-lg text-xs font-mono space-y-2.5">
+                      <div className="flex items-center justify-between border-b border-orange-500/20 pb-1.5 text-[10px] text-orange-400 uppercase tracking-wider font-bold">
+                        <span>[TACTICAL TIMELINE BRIEFING]</span>
+                        <span className="text-gray-500">CYCLE TODAY</span>
+                      </div>
+                      
+                      {battlePlan.length === 0 ? (
+                        <p className="text-gray-500 uppercase text-[10px] text-center py-2">
+                          No active threats. All sectors secure. No battle plan required.
+                        </p>
+                      ) : (
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                          {battlePlan.map((slot, index) => (
+                            <div key={index} className="flex flex-col gap-1 py-1 border-b border-white/5 last:border-b-0">
+                              <span className="text-orange-500 font-black">{slot.time}</span>
+                              <span className="text-gray-300 break-words font-semibold">{slot.name} <span className="text-[9px] text-gray-500 font-bold">[{slot.priorityLabel}]</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </section>
           </div>
 
           {/* COLUMN 2: ACTIVE REGISTER & SECURE INTELLIGENCE (span 8) */}
@@ -531,67 +941,124 @@ export default function App() {
                     </motion.div>
                   ) : (
                     tasks.map((task) => {
-                      const priorityTag = 
-                        task.priority === "High" 
-                          ? { text: "Priority Alpha", border: "border-red-650", badge: "bg-red-500/10 text-red-500 border-red-500/30" } 
-                          : task.priority === "Medium"
-                          ? { text: "Priority Beta", border: "border-orange-500", badge: "bg-orange-500/10 text-orange-500 border-orange-500/30" }
-                          : { text: "Priority Gamma", border: "border-gray-600", badge: "bg-white/5 text-gray-400 border-white/10" };
+                      const defcon = calculateDefcon(task.deadline, task.priority);
+                      const defconTag = 
+                        defcon === 1 
+                          ? { text: "DEFCON 1", border: "border-red-650 shadow-[inset_4px_0_0_#ef4444]", badge: "bg-red-500/20 text-red-500 border-red-500/50 animate-pulse font-black" } 
+                          : defcon === 2
+                          ? { text: "DEFCON 2", border: "border-red-500", badge: "bg-red-500/10 text-red-400 border-red-500/30 font-bold" }
+                          : defcon === 3
+                          ? { text: "DEFCON 3", border: "border-orange-500", badge: "bg-orange-500/10 text-orange-400 border-orange-500/30 font-bold" }
+                          : defcon === 4
+                          ? { text: "DEFCON 4", border: "border-yellow-500", badge: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30 font-bold" }
+                          : { text: "DEFCON 5", border: "border-emerald-500", badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" };
                           
                       const deadlineText = getDeadlineStatusText(task.deadline, task.completed);
 
                       return (
-                        <motion.div
-                          key={task.id}
-                          layout
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, x: -30 }}
-                          className={`flex items-center justify-between p-4 bg-white/5 border-l-4 rounded-r transition-all ${priorityTag.border} ${
-                            task.completed ? "opacity-45" : "hover:bg-white/8 cursor-default"
-                          }`}
-                        >
-                          <div className="flex flex-col gap-1 min-w-0 pr-4">
-                            <span className={`text-sm font-bold text-white uppercase tracking-tight break-words max-w-sm sm:max-w-md ${
-                              task.completed ? "line-through text-gray-500" : ""
-                            }`}>
-                              {task.name}
-                            </span>
-                            <span className="text-[10px] text-gray-500 uppercase font-mono tracking-wider">
-                              DEADLINE: {task.deadline || "NONE"} • {task.estimatedHours} HRS EST. • <span className={deadlineText.color}>{deadlineText.text}</span>
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-4 flex-shrink-0">
-                            <span className={`px-2 py-1 text-[9px] font-bold border uppercase tracking-wider rounded ${priorityTag.badge}`}>
-                              {priorityTag.text}
-                            </span>
-
-                            <div className="flex items-center gap-1.5">
-                              {/* Toggle Checkbox */}
-                              <button
-                                onClick={() => handleToggleCompleted(task.id)}
-                                className={`p-1.5 rounded text-xs transition cursor-pointer ${
-                                  task.completed
-                                    ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                                    : "bg-white/5 text-gray-400 hover:text-white"
-                                }`}
-                                title={task.completed ? "Re-open" : "Complete"}
-                              >
-                                {task.completed ? <Check className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                              </button>
-
-                              {/* Delete task */}
-                              <button
-                                onClick={() => handleDeleteTask(task.id)}
-                                className="p-1.5 rounded bg-white/5 text-gray-500 hover:text-red-500 hover:bg-red-950/20 transition cursor-pointer"
-                                title="Delete task"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                        <div key={task.id} className="flex flex-col gap-1.5 border-b border-white/5 pb-3 last:border-b-0">
+                          {/* Main Task Card */}
+                          <motion.div
+                            layout
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, x: -30 }}
+                            className={`flex items-center justify-between p-4 bg-white/5 border-l-4 rounded-r transition-all ${defconTag.border} ${
+                              task.completed ? "opacity-45" : "hover:bg-white/8 cursor-default"
+                            }`}
+                          >
+                            <div className="flex flex-col gap-1 min-w-0 pr-4">
+                              <span className={`text-sm font-bold text-white uppercase tracking-tight break-words max-w-sm sm:max-w-md ${
+                                task.completed ? "line-through text-gray-500" : ""
+                              }`}>
+                                {task.name}
+                              </span>
+                              <span className="text-[10px] text-gray-500 uppercase font-mono tracking-wider">
+                                DEADLINE: {task.deadline || "NONE"} • {task.estimatedHours} HRS EST. • <span className={deadlineText.color}>{deadlineText.text}</span>
+                              </span>
                             </div>
-                          </div>
-                        </motion.div>
+
+                            <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+                              {/* DECOMPOSE BUTTON */}
+                              {!task.completed && (!task.subtasks || task.subtasks.length === 0) && (
+                                <button
+                                  onClick={() => handleDecomposeTask(task.id)}
+                                  className="px-2 py-1 text-[9px] font-mono font-bold bg-orange-600/10 hover:bg-orange-600/20 border border-orange-500/30 text-orange-400 hover:text-orange-300 rounded transition cursor-pointer uppercase flex items-center gap-1"
+                                  title="Decompose Task"
+                                >
+                                  <Cpu className="w-3 h-3" /> Decompose
+                                </button>
+                              )}
+
+                              <span className={`px-2 py-1 text-[9px] font-bold border uppercase tracking-wider rounded ${defconTag.badge}`}>
+                                {defconTag.text}
+                              </span>
+
+                              <div className="flex items-center gap-1.5">
+                                {/* Toggle Checkbox */}
+                                <button
+                                  onClick={() => handleToggleCompleted(task.id)}
+                                  className={`p-1.5 rounded text-xs transition cursor-pointer ${
+                                    task.completed
+                                      ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                      : "bg-white/5 text-gray-400 hover:text-white"
+                                  }`}
+                                  title={task.completed ? "Re-open" : "Complete"}
+                                >
+                                  {task.completed ? <Check className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                                </button>
+
+                                {/* Delete task */}
+                                <button
+                                  onClick={() => handleDeleteTask(task.id)}
+                                  className="p-1.5 rounded bg-white/5 text-gray-500 hover:text-red-500 hover:bg-red-950/20 transition cursor-pointer"
+                                  title="Delete task"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+
+                          {/* Nested Indented Subtasks Block */}
+                          {task.subtasks && task.subtasks.length > 0 && (
+                            <div className="pl-6 pr-2 py-1.5 flex flex-col gap-1.5 border-l border-white/10 ml-4 bg-black/20 rounded-r">
+                              <div className="text-[8px] font-mono font-bold text-gray-600 uppercase tracking-widest mb-0.5">
+                                [SUBTASK DECOMPOSITION QUEUE]
+                              </div>
+                              {task.subtasks.map((subtask) => (
+                                <motion.div
+                                  key={subtask.id}
+                                  initial={{ opacity: 0, x: -10 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  className={`flex items-center justify-between p-2 bg-white/2 border border-white/5 rounded text-xs transition duration-150 ${
+                                    subtask.completed ? "opacity-45" : "hover:bg-white/5"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                                    <button
+                                      onClick={() => handleToggleSubtask(task.id, subtask.id)}
+                                      className={`p-1 rounded text-[10px] transition cursor-pointer ${
+                                        subtask.completed
+                                          ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                          : "bg-white/5 text-gray-500 hover:text-white"
+                                      }`}
+                                    >
+                                      {subtask.completed ? <Check className="w-3 h-3" /> : <div className="w-3 h-3 border border-gray-600 rounded-sm" />}
+                                    </button>
+                                    <span className={`font-mono text-[11px] break-words text-gray-300 ${subtask.completed ? "line-through text-gray-500 animate-pulse" : ""}`}>
+                                      {subtask.name}
+                                    </span>
+                                  </div>
+
+                                  <span className="text-[9px] font-mono text-gray-500 flex-shrink-0 bg-white/2 px-1.5 py-0.5 rounded border border-white/5">
+                                    {subtask.estimatedHours} HR
+                                  </span>
+                                </motion.div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       );
                     })
                   )}

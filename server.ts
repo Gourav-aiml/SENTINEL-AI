@@ -76,13 +76,30 @@ async function startServer() {
         }
       });
 
+      // Find matched task from pending list based on query keywords
+      const matchedTask = pendingTasks.find(t => query.includes(t.name.toLowerCase()));
+
       // Synthesize custom intelligence response based on query keywords
       let reply = "";
 
+      // Stress detection keywords:
+      const stressKeywords = ["overwhelmed", "cant do", "can't do", "too much", "help", "stress", "stressed", "anxious", "panic", "tired", "worry", "worried"];
+      const containsStressKeyword = stressKeywords.some(kw => query.includes(kw));
+
+      if (containsStressKeyword) {
+        reply = `[🌿 OPERATOR SUPPORT PROTOCOL ACTIVE]
+I hear you, Operator. Let's pause and take a slow, deep breath. The system parameters are just numbers, and your well-being is the absolute highest priority. 
+
+Let's clear the clutter together with this calm, step-by-step recovery plan:
+1. **Take 1 minute for yourself**: Step away from the terminal. Close your eyes, inhale for 4 seconds, hold for 4, and exhale for 4.
+2. **Focus on exactly ONE thing**: Ignore everything else. We will pick just *one* small task — even a simple 15-minute subtask — to start. Let's not look at the whole list.
+3. **Extend deadlines if needed**: You have full clearance to adjust deadlines. There is no real threat; we can restructure everything.
+4. **Take breaks**: Do not attempt to burn through all hours at once. Work for 25 minutes, then stand up and stretch.
+
+You are doing great. We are in this together, and we can handle it step-by-step. Let me know when you're ready, and we can select just one simple item to begin.`;
+      }
       // 1. Check if the user is asking about a specific task by name
-      const matchedTask = pendingTasks.find(t => query.includes(t.name.toLowerCase()));
-      
-      if (matchedTask) {
+      else if (matchedTask) {
         const priorityIndicator = matchedTask.priority === "High" ? "🚨 HIGH THREAT" : matchedTask.priority === "Medium" ? "⚠️ MEDIUM RISK" : "🛡️ LOW RISK";
         reply = `[SENTINEL DIRECT VECTOR OVERRIDE ACTIVE]
 Target objective identified: **"${matchedTask.name}"**

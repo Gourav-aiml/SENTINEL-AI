@@ -1,3 +1,10 @@
+export interface Subtask {
+  id: string;
+  name: string;
+  estimatedHours: number;
+  completed: boolean;
+}
+
 export interface Task {
   id: string;
   name: string;
@@ -6,6 +13,7 @@ export interface Task {
   estimatedHours: number;
   completed: boolean;
   createdAt: string;
+  subtasks?: Subtask[];
 }
 
 export interface ChatMessage {
