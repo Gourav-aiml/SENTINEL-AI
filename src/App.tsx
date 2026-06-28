@@ -164,6 +164,7 @@ export default function App() {
 
   // Time metrics inside simulation
   const [systemTime, setSystemTime] = useState("");
+  const [clockTime, setClockTime] = useState("");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -183,6 +184,11 @@ export default function App() {
       // Emulate standard military timestamp format
       const formatted = now.toISOString().replace("T", " ").substring(0, 19) + " UTC";
       setSystemTime(formatted);
+      
+      const hrs = String(now.getHours()).padStart(2, "0");
+      const mins = String(now.getMinutes()).padStart(2, "0");
+      const secs = String(now.getSeconds()).padStart(2, "0");
+      setClockTime(`${hrs}:${mins}:${secs}`);
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
@@ -386,7 +392,7 @@ export default function App() {
   };
 
   // BATTLE PLAN GENERATOR
-  const [battlePlan, setBattlePlan] = useState<{ time: string; name: string; priorityLabel: string }[] | null>(null);
+  const [battlePlan, setBattlePlan] = useState<{ time: string; name: string; priorityLabel: string; defcon: number }[] | null>(null);
 
   const handleGenerateBattlePlan = () => {
     const pending = tasks.filter(t => !t.completed);
@@ -432,12 +438,14 @@ export default function App() {
       currentHour = endHour;
       currentMinute = endMinute;
       
-      const priorityLabel = t.priority === "High" ? "PRIORITY ALPHA" : t.priority === "Medium" ? "PRIORITY BETA" : "PRIORITY GAMMA";
+      const defcon = calculateDefcon(t.deadline, t.priority);
+      const priorityLabel = `DEFCON ${defcon}`;
       
       return {
         time: `${startStr} - ${endStr}`,
         name: t.name,
-        priorityLabel
+        priorityLabel,
+        defcon
       };
     });
 
@@ -666,12 +674,14 @@ No overdue mission vectors detected in the mainframe logs. System timeline integ
                   cx="28"
                   cy="28"
                   r="18"
-                  stroke={cognitiveLoad <= 40 ? "#10b981" : cognitiveLoad <= 70 ? "#eab308" : "#ef4444"}
                   strokeWidth="3.5"
                   fill="transparent"
                   strokeDasharray={2 * Math.PI * 18}
-                  animate={{ strokeDashoffset: (2 * Math.PI * 18) - (cognitiveLoad / 100) * (2 * Math.PI * 18) }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  animate={{ 
+                    strokeDashoffset: (2 * Math.PI * 18) - (cognitiveLoad / 100) * (2 * Math.PI * 18),
+                    stroke: cognitiveLoad <= 40 ? "#10b981" : cognitiveLoad <= 70 ? "#eab308" : "#ef4444"
+                  }}
+                  transition={{ duration: 0.8, ease: "easeInOut" }}
                 />
               </svg>
               <span className={`absolute font-mono font-black text-xs ${
@@ -891,12 +901,21 @@ No overdue mission vectors detected in the mainframe logs. System timeline integ
                         </p>
                       ) : (
                         <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-                          {battlePlan.map((slot, index) => (
-                            <div key={index} className="flex flex-col gap-1 py-1 border-b border-white/5 last:border-b-0">
-                              <span className="text-orange-500 font-black">{slot.time}</span>
-                              <span className="text-gray-300 break-words font-semibold">{slot.name} <span className="text-[9px] text-gray-500 font-bold">[{slot.priorityLabel}]</span></span>
-                            </div>
-                          ))}
+                          {battlePlan.map((slot, index) => {
+                            const defconLevel = slot.defcon || 5;
+                            const timeColorClass = 
+                              defconLevel <= 2 
+                                ? "text-orange-500 font-bold" 
+                                : defconLevel <= 4 
+                                ? "text-yellow-400 font-bold" 
+                                : "text-emerald-400 font-bold";
+                            return (
+                              <div key={index} className="flex flex-col gap-1 py-1 border-b border-white/5 last:border-b-0">
+                                <span className={`${timeColorClass} font-mono`}>{slot.time}</span>
+                                <span className="text-gray-300 break-words font-semibold">{slot.name} <span className="text-[9px] text-gray-500 font-bold">[{slot.priorityLabel}]</span></span>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -963,7 +982,9 @@ No overdue mission vectors detected in the mainframe logs. System timeline integ
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, x: -30 }}
-                            className={`flex items-center justify-between p-4 bg-white/5 border-l-4 rounded-r transition-all ${defconTag.border} ${
+                            className={`flex items-center justify-between p-4 bg-white/5 border-l-4 rounded-r transition-all ${
+                              defcon === 1 && !task.completed ? "animate-red-glow bg-red-950/10" : defconTag.border
+                            } ${
                               task.completed ? "opacity-45" : "hover:bg-white/8 cursor-default"
                             }`}
                           >
@@ -1032,7 +1053,7 @@ No overdue mission vectors detected in the mainframe logs. System timeline integ
                                   initial={{ opacity: 0, x: -10 }}
                                   animate={{ opacity: 1, x: 0 }}
                                   className={`flex items-center justify-between p-2 bg-white/2 border border-white/5 rounded text-xs transition duration-150 ${
-                                    subtask.completed ? "opacity-45" : "hover:bg-white/5"
+                                    subtask.completed ? "opacity-45 bg-[#030704]/40 border-emerald-950/20" : "hover:bg-white/5"
                                   }`}
                                 >
                                   <div className="flex items-center gap-2.5 min-w-0 pr-3">
@@ -1040,18 +1061,31 @@ No overdue mission vectors detected in the mainframe logs. System timeline integ
                                       onClick={() => handleToggleSubtask(task.id, subtask.id)}
                                       className={`p-1 rounded text-[10px] transition cursor-pointer ${
                                         subtask.completed
-                                          ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                          ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                                           : "bg-white/5 text-gray-500 hover:text-white"
                                       }`}
                                     >
-                                      {subtask.completed ? <Check className="w-3 h-3" /> : <div className="w-3 h-3 border border-gray-600 rounded-sm" />}
+                                      {subtask.completed ? <Check className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5 border border-white/15 rounded-sm bg-white/2 hover:border-orange-500/40 transition-colors" />}
                                     </button>
-                                    <span className={`font-mono text-[11px] break-words text-gray-300 ${subtask.completed ? "line-through text-gray-500 animate-pulse" : ""}`}>
-                                      {subtask.name}
+                                    <span className={`font-mono text-[11px] break-words flex flex-wrap items-center gap-2 ${
+                                      subtask.completed 
+                                        ? "line-through decoration-emerald-500 decoration-2 text-emerald-500/80 animate-pulse" 
+                                        : "text-gray-300"
+                                    }`}>
+                                      <span>{subtask.name}</span>
+                                      {subtask.completed && (
+                                        <span className="text-[8px] font-sans font-black text-emerald-400 bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/30 uppercase tracking-widest animate-pulse">
+                                          SUBTASK NEUTRALIZED
+                                        </span>
+                                      )}
                                     </span>
                                   </div>
 
-                                  <span className="text-[9px] font-mono text-gray-500 flex-shrink-0 bg-white/2 px-1.5 py-0.5 rounded border border-white/5">
+                                  <span className={`text-[9px] font-mono flex-shrink-0 px-1.5 py-0.5 rounded border ${
+                                    subtask.completed 
+                                      ? "text-emerald-500/60 bg-emerald-950/10 border-emerald-950/20" 
+                                      : "text-gray-500 bg-white/2 border-white/5"
+                                  }`}>
                                     {subtask.estimatedHours} HR
                                   </span>
                                 </motion.div>
@@ -1171,11 +1205,12 @@ No overdue mission vectors detected in the mainframe logs. System timeline integ
         </div>
 
         {/* SECURE NETWORK FOOTER */}
-        <footer id="sentinel-footer" className="h-10 border-t border-white/5 px-4 flex items-center justify-between text-[9px] text-gray-650 font-mono mt-3">
-          <div className="flex gap-4">
+        <footer id="sentinel-footer" className="h-12 border-t border-white/5 px-4 flex flex-col sm:flex-row items-center justify-between text-[9px] text-gray-500 font-mono mt-4 gap-2 sm:gap-0 bg-black/40">
+          <div className="flex gap-4 items-center">
             <span>IP: 192.168.1.104</span>
             <span>LATENCY: 14MS</span>
-            <span className="text-green-900 tracking-wider">ENCRYPTED CONNECTION</span>
+            <span className="text-emerald-500 bg-emerald-950/25 px-1.5 py-0.5 border border-emerald-900/30 rounded tracking-wider uppercase font-bold">ENCRYPTED CONNECTION</span>
+            <span className="text-orange-500 bg-orange-950/30 px-2 py-0.5 rounded border border-orange-900/30 font-bold uppercase tracking-wide">SYSTEM TIME: {clockTime}</span>
           </div>
           <div className="flex gap-4 uppercase font-semibold">
             <span className="flex items-center gap-1">
