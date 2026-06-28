@@ -145,7 +145,7 @@ export default function App() {
       {
         id: "msg-welcome",
         role: "model",
-        text: "[SENTINEL COMMAND GATEWAY ACTIVE]\n\nGreetings, Operator. I have mapped your current mission vectors. State your operational query or select a rapid tactical query below.",
+        text: "[SENTINEL COMMAND GATEWAY ACTIVE]\n\nGreetings, User. I have mapped your current mission vectors. State your operational query or select a rapid tactical query below.",
         timestamp: new Date().toISOString()
       }
     ];
@@ -359,6 +359,30 @@ export default function App() {
     return Math.min(100, Math.round(baseLoad + criticalLoad));
   }, [tasks]);
 
+  // VELOCITY ANALYSIS METRICS
+  const velocityMetrics = useMemo(() => {
+    const total = tasks.length;
+    const completed = tasks.filter(t => t.completed).length;
+    const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    
+    // Missed deadlines: uncompleted tasks with deadlines having DEFCON <= 2 (today or tomorrow/overdue)
+    const missed = tasks.filter(t => !t.completed && t.deadline && calculateDefcon(t.deadline, t.priority) <= 2).length;
+    
+    // Percentage output increase needed to complete missed objectives
+    let increasePercent = 0;
+    if (missed > 0) {
+      increasePercent = completed > 0 
+        ? Math.round((missed / completed) * 100) 
+        : missed * 40;
+    }
+    
+    return {
+      rate,
+      missed,
+      increasePercent: Math.min(500, increasePercent)
+    };
+  }, [tasks]);
+
   // TASK DECOMPOSITION ENGINE
   const handleDecomposeTask = (id: string) => {
     setTasks(prev => prev.map(t => {
@@ -483,7 +507,7 @@ Mainframe scan located **${rescueCount} overdue mission vectors** violating curr
 **RESCUE MUTATIONS EXECUTED:**
 - **Elevated Status:** ${rescueCount} objectives have been promoted to **PRIORITY ALPHA (High)** threat level.
 - **Timeline Recalibration:** Target windows synchronized to current core cycle (**2026-06-23**).
-- **Execution Mandate:** Divert all operator memory blocks to immediately neutralize **"${updatedTasks.find(t => t.priority === "High" && !t.completed)?.name}"**. Do not falter.`,
+- **Execution Mandate:** Divert all user memory blocks to immediately neutralize **"${updatedTasks.find(t => t.priority === "High" && !t.completed)?.name}"**. Do not falter.`,
         timestamp: new Date().toISOString()
       };
 
@@ -700,6 +724,45 @@ No overdue mission vectors detected in the mainframe logs. System timeline integ
                   <span className={cognitiveLoad <= 40 ? "text-emerald-400" : cognitiveLoad <= 70 ? "text-yellow-400" : "text-red-400"}>
                     {cognitiveLoad <= 40 ? "OPTIMAL" : "ELEVATED"}
                   </span>
+                )}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* VELOCITY ANALYSIS SECTION */}
+        <section id="sentinel-velocity-analysis" className="mt-4 border border-orange-500/25 bg-orange-950/5 p-4 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4 shadow-md transition-all duration-300">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="p-2.5 bg-orange-500/10 border border-orange-500/30 rounded text-orange-400 flex-shrink-0 animate-pulse">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <h3 className="text-xs font-mono font-bold text-orange-400 tracking-widest uppercase flex items-center gap-2">
+                <span>[VELOCITY OVERWATCH & THREAT ANALYSIS]</span>
+              </h3>
+              <p className="text-[11px] text-gray-300 mt-1 uppercase font-mono tracking-wide leading-relaxed">
+                Completion Rate: <span className="text-white font-bold">{velocityMetrics.rate}%</span> • At current velocity you will miss <span className="text-red-400 font-bold underline decoration-red-500/50 decoration-2">{velocityMetrics.missed}</span> deadlines
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto flex-shrink-0 font-mono text-xs">
+            {/* Dynamic Progress Indicator bar */}
+            <div className="w-full md:w-36 bg-white/5 h-2 rounded overflow-hidden border border-white/5">
+              <motion.div 
+                className="bg-orange-500 h-full"
+                animate={{ width: `${velocityMetrics.rate}%` }}
+                transition={{ duration: 0.8, ease: "easeInOut" }}
+              />
+            </div>
+            
+            <div className="bg-orange-950/20 border border-orange-500/35 px-4 py-2 rounded text-center md:text-left min-w-[220px]">
+              <span className="text-[9px] text-gray-500 uppercase font-black block tracking-widest">OUTPUT DELTA REQUIRED</span>
+              <span className="text-xs font-bold text-orange-400 block mt-0.5">
+                {velocityMetrics.missed > 0 ? (
+                  <>Increase output by <span className="text-orange-300 underline underline-offset-2 font-black">{velocityMetrics.increasePercent}%</span> to secure all objectives</>
+                ) : (
+                  <span className="text-emerald-400 font-black">SECURE ALL OBJECTIVES (0% DELTA)</span>
                 )}
               </span>
             </div>

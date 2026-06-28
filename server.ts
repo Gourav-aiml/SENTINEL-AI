@@ -87,8 +87,8 @@ async function startServer() {
       const containsStressKeyword = stressKeywords.some(kw => query.includes(kw));
 
       if (containsStressKeyword) {
-        reply = `[🌿 OPERATOR SUPPORT PROTOCOL ACTIVE]
-I hear you, Operator. Let's pause and take a slow, deep breath. The system parameters are just numbers, and your well-being is the absolute highest priority. 
+        reply = `[🌿 USER SUPPORT PROTOCOL ACTIVE]
+I hear you, User. Let's pause and take a slow, deep breath. The system parameters are just numbers, and your well-being is the absolute highest priority. 
 
 Let's clear the clutter together with this calm, step-by-step recovery plan:
 1. **Take 1 minute for yourself**: Step away from the terminal. Close your eyes, inhale for 4 seconds, hold for 4, and exhale for 4.
@@ -197,7 +197,7 @@ ${listStr}
       // 6. Greetings / Simple Help / Fallback
       else {
         reply = `[SENTINEL COMMAND GATEWAY STATUS BRIEF]
-Welcome back, Operator. I have mapped your active coordinates.
+Welcome back, User. I have mapped your active coordinates.
 
 **Operational Ledger Overview:**
 - **System Integrity:** Secure.
@@ -211,7 +211,7 @@ Welcome back, Operator. I have mapped your active coordinates.
 - Ask about **"Deadlines"** to run a terminal window risk assessment.
 - Name any specific task to generate a custom target briefing.
 
-*Awaiting Operator transmission...*`;
+*Awaiting User transmission...*`;
       }
 
       // Emulate a realistic dynamic system response lag (e.g. 400ms) to maintain immersion
