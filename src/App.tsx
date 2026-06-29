@@ -23,44 +23,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Task, ChatMessage } from "./types";
 
 // Default seed objectives
-const DEFAULT_TASKS: Task[] = [
-  {
-    id: "task-overdue-1",
-    name: "Calibrate secondary defense network containment grid",
-    deadline: "2026-06-20", // Overdue relative to June 23, 2026!
-    priority: "Medium",
-    estimatedHours: 4,
-    completed: false,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "task-1",
-    name: "Review SENTINEL security protocol overrides",
-    deadline: "2026-06-23", // Today in the simulation metadata
-    priority: "High",
-    estimatedHours: 3,
-    completed: false,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "task-2",
-    name: "Perform mainframe cybernetic database synchronization",
-    deadline: "2026-06-25",
-    priority: "Medium",
-    estimatedHours: 6,
-    completed: true,
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: "task-3",
-    name: "Map external vector intrusion vectors and threat levels",
-    deadline: "2026-06-29",
-    priority: "Low",
-    estimatedHours: 2,
-    completed: false,
-    createdAt: new Date().toISOString()
-  }
-];
+const DEFAULT_TASKS: Task[] = [];
 
 export const calculateDefcon = (deadlineStr: string | undefined, priority?: string): 1 | 2 | 3 | 4 | 5 => {
   if (!deadlineStr) {
